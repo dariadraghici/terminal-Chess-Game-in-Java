@@ -1,6 +1,6 @@
 Descriere implementare:
 
-Main (legatura dintre fisiere, useri si jocuri)
+    Main (legatura dintre fisiere, useri si jocuri)
 In implementare, Main este clasa care porneste aplicatia si o tine in viata. Ea pastreaza o lista
 cu toti utilizatorii existenti (User), o harta cu toate jocurile existente (Game), indexate dupa
 id si utilizatorul curent logat (User).
@@ -34,7 +34,7 @@ tot si ofera optiunea de login din nou sau iesire din aplicatie.
 F. public static void main(String[] args) creaza un obiect Main, apeleaza read() pentru a
 incarca utilizatorii si jocurile, apoi run() pentru a porni interactiunea.
 
-User (contul cu jocuri si puncte)
+    User (contul cu jocuri si puncte)
 A. User reprezinta un cont din aplicatie: email (String), parola (String), lista de jocuri in
 derulare (List<Game>) si punctaj total acumulat (int).
 
@@ -53,14 +53,14 @@ E. getPoints() intoarce punctele totale (X din cerinta).
 F. setPoints(int points) actualizeaza punctajul total, de obicei la finalul unui joc, cand Game
 a calculat noua valoare conform regulilor Xnou = X + Y ± 150/300.
 
-ChessPair (Position, Piece)
+    ChessPair (Position, Piece)
 ChessPair este o clasa generica, folosita drept cheie (Position) si valoare (Piece)
 Are doua atribute private, K si V, plus metode get pentru fiecare.
 Implementarea compararii intre ChessPair-uri se face dupa cheie (K), dupa Position.
 Are si o metoda care intoarce cheia si valoarea impreuna sub forma de String, utila la
 debugging sau la afisare interna.
 
-Position (coordonata de pe tabla)
+    Position (coordonata de pe tabla)
 Position reprezinta o casuta de pe tabla: char x pentru coloana ('A'–'H') si int y pentru linie
 (1–8).
 
@@ -72,7 +72,7 @@ pentru a scrie pozitia in JSON, pentru mesaje catre utilizator.
 Compararea intre pozitii se face crescator dupa y (linia), iar daca y este egal, crescator dupa
 x (coloana).
 
-ChessPiece + piesele concrete (King, Queen, etc.)
+    ChessPiece + piesele concrete (King, Queen, etc.)
 Interfata ChessPiece defineste comportamentul comun:
 A. List<Position> getPossibleMoves(Board board) calculeaza toate pozitiile unde piesa se
 poate muta, considerand tabla curenta (piese proprii, adverse, limite). In aceasta lista pot
@@ -86,7 +86,7 @@ in acea lista.
 C. char type() intoarce caracterul asociat piesei: 'K', 'Q', 'R', 'B', 'N', 'P'. Folosit la afisare
 si in JSON.
 
-Piece
+    Piece
 Clasa abstracta Piece implementeaza ChessPiece partial si adauga culoarea piesei, setata
 in constructor si nemodificata ulterior (Colors color) si pozitia actuala pe tabla (Position
 position)
@@ -100,7 +100,7 @@ Clasele King, Queen, Rook, Bishop, Knight, Pawn extind Piece si implementeaza lo
 specifica in getPossibleMoves conform regulilor de sah (fara rocade, en passant, etc., pentru
 ca tema simplifica).
 
-Board (retine tabla si valideaza mutarile)
+    Board (retine tabla si valideaza mutarile)
 Board retine toate piesele de pe tabla si este singura sursa oficiala de adevar pentru pozitia
 fiecarei piese.
 Colectia interna este specificata ca o lista sortata de ChessPair<Position, Piece>,
@@ -133,7 +133,7 @@ Clasa Board este folosita de Player (makeMove, pentru a incerca mutari), de Game
 a verifica stari ca sah, sahmat) si de JsonReaderUtil (pentru a reconstrui tabla la incarcarea
 jocurilor din JSON)
 
-Player
+    Player
 Player reprezinta jucatorul (uman sau computer) intr-un Game.
 Atributele sale sunt nume (String), culoare (Colors), lista de piese capturate (List<Piece>),
 multimea sortata de piese detinute (TreeSet<ChessPair<Position, Piece>>) si punctajul
@@ -157,7 +157,7 @@ D. getPoints() si setPoints(int points) permit citirea si setarea punctajului cu
 jucatorului (Y din jocul curent), folosit ulterior pentru a actualiza punctajul total al User-ului
 (X).
 
-Game
+    Game
 Game tine totul la un loc pentru un singur meci: un id (int), o tabla (Board), doi Player
 (jucatorul si computerul), o structura cu mutarile efectuate (List<Move>) si indexul
 jucatorului curent in lista de jucatori sau doar "culoarea curenta".
@@ -183,35 +183,35 @@ jucatorului, pozitia de plecare, pozitia de sosire si piesa capturata daca exist
 aceasta mutare in lista mutarilor jocului. Ea este apelata dupa ce mutarea a fost executata
 cu succes la nivel de Board/Player.
 
-Move
+    Move
 Move este modelul pentru o mutare, continand culoarea jucatorului care a facut mutarea
 (Colors), pozitia de start (Position from), pozitia finala (Position to) si piesa capturata
 (Piece captured), care poate fi null.
 Este folosit in Game pentru a tine istoricul mutarilor si in JsonReaderUtil pentru a citi/scrie
 acest istoric in JSON.
 
-Colors (ENUM cu culorile)
+    Colors (ENUM cu culorile)
 Colors contine: WHITE, BLACK si GRAY.
 GRAY si BLACK se folosesc pentru piese si jucatori; WHITE e folosita ca o culoare
 ajutatoare (de exemplu pentru borduri de tabla sau zone marcate).
 
-InvalidCommandException
+    InvalidCommandException
 InvalidCommandException se arunca atunci cand utilizatorul introduce o comanda invalidă
 (mutare cu format gresit, optiune inexistenta in meniu, text cand se asteapta un numar etc.)
 si este tratata in Main.run sau la nivelul de UI, astfel incat programul sa nu se inchida, ci sa
 afiseze un mesaj de tip "Invalid command".
 
-InvalidMoveException
+    InvalidMoveException
 InvalidMoveException se arunca atunci cand se incearca o mutare interzisa (coordonate in
 afara tablei, incalcarea regulilor de deplasare, sarit peste piese cand nu e permis, mutarea
 unei piese care nu apartine jucatorului curent, mutare care lasa regele propriu in sah).
 Eeste in general aruncata din Board.isValidMove sau Player.makeMove si este prinsa si
 tratata in Game sau in nivelul de UI, pentru a afisa "Invalid move" si a cere o mutare noua.
 
-JsonReaderUtil
+    JsonReaderUtil
 JsonReaderUtil este clasa care se ocupa de parsarea si generarea fisierelor JSON:
 accounts.json si games.json.
-La citire, se deschide accounts.json, se citeste lista de utilizatori pentru fiecare obiect JSON,
+  La citire, se deschide accounts.json, se citeste lista de utilizatori pentru fiecare obiect JSON,
 ia email, parola, puncte si lista de id-uri de jocuri, se creeaza cate un User cu aceste date,
 si pastreaza undeva lista cu id-urile de jocuri ale fiecarui user. De asemenea, se deschide
 games.json, se citeste lista de jocuri, iar pentru fiecare joc, citeste id-ul, jucatorii (email +
@@ -226,9 +226,10 @@ construieste un JSON pentru accounts.json, cu email, password, points, games (li
 id-uri) si construieste un JSON pentru games.json, cu id, players (email + color),
 currentPlayerColor, board (lista de piese cu type, color, position) si moves (lista de mutari
 cu playerColor, from, to, captured).
-JsonReaderUtil foloseste metoda type() din piesa pentru a scrie campul "type" in JSON si
+  JsonReaderUtil foloseste metoda type() din piesa pentru a scrie campul "type" in JSON si
 Position.toString() pentru campul "position". La citire, foloseste un switch sau o logica
 echivalenta pentru a reconstrui piesa corecta din caracterul type si culoarea scrisa.
 
 De asemenea, mai exista si fisiere cu rol de Testere, pentru fiecare clasa in parte, care
 testeaza fiecare metoda/ functionalitate implementata in program.
+
