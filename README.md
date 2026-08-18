@@ -1,235 +1,220 @@
-Descriere implementare:
+# Java Chess
 
-    Main (legatura dintre fisiere, useri si jocuri)
-In implementare, Main este clasa care porneste aplicatia si o tine in viata. Ea pastreaza o lista
-cu toti utilizatorii existenti (User), o harta cu toate jocurile existente (Game), indexate dupa
-id si utilizatorul curent logat (User).
+A console based chess implementation in Java, supporting full move
+validation, check and checkmate detection, a simple computer opponent, and
+persistent storage of accounts and in progress games as JSON. The project is
+built around a clear separation between board state, piece movement rules,
+game orchestration, and user account management, with no external chess
+engine or framework dependency.
 
-A. Metoda read() foloseste JsonReaderUtil ca sa incarce din accounts.json si games.json,
-cerand lui JsonReaderUtil sa construiasca toti User si toate Game, aceasta primind inapoi
-structuri Java gata legate intre ele (userii stiu ce jocuri au, jocurile stiu tabla, jucatorii,
-mutarile).
+## Overview
 
-B. Metoda write() apeleaza JsonReaderUtil pentru a serializa la loc in JSON,trecand colectia
-de useri si colectia de jocuri. JsonReaderUtil transforma obiectele Java in formatul cerut de
-tema si le scrie in fisiere.
+The application is a terminal based chess game where a human player, logged
+into an account, plays against a simple computer opponent. Accounts and
+games persist across sessions in two JSON files, `accounts.json` and
+`games.json`, so a player can log back in and resume any game left in
+progress. The implementation covers the full set of standard piece movement
+rules, capture handling, pawn promotion, check detection, checkmate
+detection, and draw by threefold repetition, without relying on castling or
+en passant, which are intentionally out of scope.
 
-C. Metoda login(email, password) cauta in lista interna de useri un cont care are exact acele
-credențiale. Daca gaseste, seteaza currentUser si il returneaza; daca nu, intoarce null si run()
-poate cere din nou datele.
+## Technical Structure
 
-D. Metoda newAccount(email, password) creeaza un User nou, il adauga in lista, il seteaza
-ca utilizator curent si returneaza obiectul. La urmatorul write(), acest nou cont va aparea si
-in accounts.json.
+The codebase is organized around four layers of responsibility:
 
-E. Metoda run() implementeaza tot flow-ul descris in enunt. Cere login sau creare cont nou
-(folosind login / newAccount). Dupa autentificare, afiseaza meniul principal: joc nou, vezi
-jocuri in progres, delogare. Pentru joc nou: creeaza Game, Player pentru utilizator si
-computer, apeleaza game.start() si intra in bucla de joc (citire mutari, afisare tabla, apeluri
-catre Player/Board/Game). Pentru joc in progres: ia lista din currentUser.getActiveGames(),
-afiseaza, lasa utilizatorul sa aleaga un id si apoi ori afiseaza detalii, ori apeleaza
-game.resume(), ori sterge jocul din lista. La delogare: poate apela write() pentru a salva
-tot si ofera optiunea de login din nou sau iesire din aplicatie.
+* **Application and account layer**, `Main` and `User`, handling the
+  program entry point, login and account creation, and per user game lists
+* **Game orchestration layer**, `Game`, `Player`, and `Move`, coordinating
+  turns, tracking move history, and computing scores
+* **Board and rules layer**, `Board`, `Position`, `ChessPair`, and the
+  `ChessPiece` hierarchy (`Piece` and its concrete subclasses), holding the
+  authoritative state of the board and enforcing movement legality
+* **Persistence layer**, `JsonReaderUtil`, translating between the in
+  memory object graph and the two JSON files on disk
 
-F. public static void main(String[] args) creaza un obiect Main, apeleaza read() pentru a
-incarca utilizatorii si jocurile, apoi run() pentru a porni interactiunea.
+Two custom checked exceptions, `InvalidCommandException` and
+`InvalidMoveException`, are used to signal malformed user input and illegal
+chess moves respectively, allowing the application loop to report a problem
+and prompt again rather than terminating.
 
-    User (contul cu jocuri si puncte)
-A. User reprezinta un cont din aplicatie: email (String), parola (String), lista de jocuri in
-derulare (List<Game>) si punctaj total acumulat (int).
+## Domain Model
 
-B. addGame(Game game) adauga un joc nou in lista user-ului, fiind folosita cand se creeaza
-un joc nou din meniu sau cand se incarca un joc din games.json care apartine acelei
-adrese de email.
+### Position
 
-C. removeGame(Game game) scoate jocul din lista,fiindc apelat la finalul unui joc incheiat
-definitiv sau cand utilizatorul decide sa stearga un joc din lista de jocuri in progres.
+`Position` represents a single square, storing a column (`'A'` to `'H'`)
+and a row (`1` to `8`). Its constructor rejects any coordinate outside the
+board, so an invalid `Position` object can never exist. It implements
+`Comparable`, ordering squares first by row and then by column, and
+provides a `toString` in standard chess notation (for example `A2`), used
+both for display and for JSON serialization.
 
-D. getActiveGames() returneaza lista de Game asociate cu utilizatorul, fiind folosita in
-meniul "Vizualizare jocuri in progres".
+### ChessPair
 
-E. getPoints() intoarce punctele totale (X din cerinta).
+`ChessPair<K, V>` is a small generic key value container, used to pair a
+`Position` with the `Piece` occupying it. It implements `Comparable` by
+delegating to its key, so collections of pairs can be kept sorted by board
+position.
 
-F. setPoints(int points) actualizeaza punctajul total, de obicei la finalul unui joc, cand Game
-a calculat noua valoare conform regulilor Xnou = X + Y ± 150/300.
+### Piece Hierarchy
 
-    ChessPair (Position, Piece)
-ChessPair este o clasa generica, folosita drept cheie (Position) si valoare (Piece)
-Are doua atribute private, K si V, plus metode get pentru fiecare.
-Implementarea compararii intre ChessPair-uri se face dupa cheie (K), dupa Position.
-Are si o metoda care intoarce cheia si valoarea impreuna sub forma de String, utila la
-debugging sau la afisare interna.
+`ChessPiece` is the interface describing what every piece can do:
+computing its candidate destinations on a given board
+(`getPossibleMoves`), checking whether it currently threatens a given
+square (`checkForCheck`), and reporting its type character (`type`, one of
+`K`, `Q`, `R`, `B`, `N`, `P`).
 
-    Position (coordonata de pe tabla)
-Position reprezinta o casuta de pe tabla: char x pentru coloana ('A'–'H') si int y pentru linie
-(1–8).
+`Piece` is an abstract class implementing the shared parts of this
+contract: it stores color and current position, exposes accessors for
+both, and provides a shared helper, `addLinearMoves`, used by every sliding
+piece (rook, bishop, queen) to walk in a given direction until it reaches
+the edge of the board, a friendly piece, or an enemy piece it can capture.
 
-A. equals(Object o) verifica daca doua pozitii sunt egale (aceeasi coloana, acelasi rand). Este
-important pentru colectii care depind de egalitate (map, set).
+Each concrete piece extends `Piece` and implements `getPossibleMoves`
+according to its own movement pattern:
 
-B. toString() intoarce pozitia in notatie de sah, de exemplu "A2". E folosita pentru afisari,
-pentru a scrie pozitia in JSON, pentru mesaje catre utilizator.
-Compararea intre pozitii se face crescator dupa y (linia), iar daca y este egal, crescator dupa
-x (coloana).
+* `Bishop` moves diagonally any distance, using `addLinearMoves` along all
+  four diagonal directions
+* `King` moves one square in any of the eight surrounding directions
+* `Knight` moves in an L shape, the only piece allowed to jump over others,
+  computed from a fixed set of eight relative offsets
+* `Rook`, `Queen`, and `Pawn` follow the same pattern (straight lines for
+  the rook, straight lines and diagonals combined for the queen, and the
+  standard forward, double first move, and diagonal capture rules for the
+  pawn)
 
-    ChessPiece + piesele concrete (King, Queen, etc.)
-Interfata ChessPiece defineste comportamentul comun:
-A. List<Position> getPossibleMoves(Board board) calculeaza toate pozitiile unde piesa se
-poate muta, considerand tabla curenta (piese proprii, adverse, limite). In aceasta lista pot
-aparea mutari care ar lasa regele in sah; filtrarea finala se face in Board.
+Every piece returns pseudo legal moves only, meaning moves that respect its
+own movement pattern and do not capture a friendly piece, but that may
+still leave the mover's own king in check. Filtering out moves that expose
+the king is handled centrally by `Board`, not by the pieces themselves.
 
-B. boolean checkForCheck(Board board, Position kingPosition) verifica daca, in starea
-curenta a tablei, regele de la kingPosition poate primi sah de la piesa curenta. O
-implementare naturala: se apeleaza getPossibleMoves si se verifica daca kingPosition este
-in acea lista.
+## Move Validation and Game Rules
 
-C. char type() intoarce caracterul asociat piesei: 'K', 'Q', 'R', 'B', 'N', 'P'. Folosit la afisare
-si in JSON.
+### Board
 
-    Piece
-Clasa abstracta Piece implementeaza ChessPiece partial si adauga culoarea piesei, setata
-in constructor si nemodificata ulterior (Colors color) si pozitia actuala pe tabla (Position
-position)
+`Board` is the single source of truth for where every piece stands. It
+stores pieces in a `Map<Position, Piece>` and exposes the operations needed
+by the rest of the application: looking up a piece at a square, placing or
+replacing a piece, and initializing the standard starting position.
 
-Metode:
-A. Colors getColor() returneaza culoarea piesei,
-B. Position getPosition() returneaza pozitia curenta,
-C. void setPosition(Position position) actualizeaza pozitia piesei (Board apeleaza asta cand
-muta piesa).
-Clasele King, Queen, Rook, Bishop, Knight, Pawn extind Piece si implementeaza logica
-specifica in getPossibleMoves conform regulilor de sah (fara rocade, en passant, etc., pentru
-ca tema simplifica).
+Move validation happens in two stages inside `isValidMove`:
 
-    Board (retine tabla si valideaza mutarile)
-Board retine toate piesele de pe tabla si este singura sursa oficiala de adevar pentru pozitia
-fiecarei piese.
-Colectia interna este specificata ca o lista sortata de ChessPair<Position, Piece>,
-implementata in mod tipic ca TreeSet<ChessPair<Position, Piece>>, sortata dupa Position.
+1. **Pattern legality.** The moving piece's `getPossibleMoves` is consulted
+   to confirm the destination is a square the piece could reach at all,
+   after first rejecting attempts to capture a piece of the same color.
+2. **King safety.** The move is simulated on a full copy of the board,
+   produced by `copyBoard`, which deep copies every piece so the real board
+   is never mutated during validation. If the simulated move would leave
+   the moving player's own king in check, as determined by
+   `isKingInCheck`, the move is rejected.
 
-A. initialize() curata orice stare existenta (daca e cazul), creeaza toate piesele la pozitiile
-initiale (randuri 1–2 si 7–8), pentru fiecare piesa creata, formeaza un ChessPair(Position,
-Piece) si il adauga in lista, se asigura ca pozitia din obiectul Piece (piece.getPosition())
-este aceeasi cu pozitia din ChessPair.
+`isKingInCheck` locates the king of the given color and asks every enemy
+piece whether the king's square appears in its pseudo legal move list,
+reusing the same movement logic used for generating candidate moves.
 
-B. movePiece(Position from, Position to): verifica mutarea folosind isValidMove(from, to)
-astfel inacat, daca mutarea nu e valida, arunca InvalidMoveException,iar daca e valida, ia
-piesa de la from, o scoate din lista interna si o muta la to. Updateaza ChessPair-ul din
-colectie, apeleaza piece.setPosition(to) pentru a actualiza pozitia in obiect (daca la to se
-afla o piesa adversa, o scoate din lista interna (urmatoarea oprire: lista de capturi a unui
-Player), daca piesa mutata este un pion si ajunge pe ultima linie (8 sau 1, in functie de
-culoare), inlocuieste pionul in colectie cu o piesa noua (queen, rook, bishop sau knight,
-conform alegerii impuse sau implicite)).
+Once a move passes validation, `movePiece` executes it: it removes any
+captured piece from the board, updates the moving piece's stored position,
+and relocates it in the internal map. Pawn promotion is handled at the
+point where a pawn reaches the last rank, replacing it in place with a new
+piece of the chosen type.
 
-C. getPieceAt(Position position) cauta in lista (sau map) piesa cu acea cheie Positio si
-returneaza piesa sau null daca patratul e gol.
+### Check and Checkmate
 
-D. isValidMove(Position from, Position to) verifica daca from si to sunt pe tabla, daca exista
-o piesa la from, daca piesa de la from apartine jucatorului curent (culoare) si cere listei
-getPossibleMoves a piesei de la from. Mai apoi, verifica daca to se afla in lista intoarsa,
-simuleaza mutarea (de exemplu, pe o copie de Board) si verifica daca dupa aceasta regele
-jucatorului nu ramane in sah, iar la final intoarce true daca toate verificarile trec, altfel
-false sau arunca InvalidMoveException.
-Clasa Board este folosita de Player (makeMove, pentru a incerca mutari), de Game (pentru
-a verifica stari ca sah, sahmat) si de JsonReaderUtil (pentru a reconstrui tabla la incarcarea
-jocurilor din JSON)
+Check detection is a direct consequence of `isKingInCheck`. Checkmate
+detection, implemented in `Game.checkForCheckMate`, first confirms the
+current player's king is in check, then exhaustively tries every pseudo
+legal move of every piece the current player owns through `isValidMove`. If
+none of them succeeds without throwing `InvalidMoveException`, no legal
+escape exists and the position is checkmate.
 
-    Player
-Player reprezinta jucatorul (uman sau computer) intr-un Game.
-Atributele sale sunt nume (String), culoare (Colors), lista de piese capturate (List<Piece>),
-multimea sortata de piese detinute (TreeSet<ChessPair<Position, Piece>>) si punctajul
-curent din joc (int).
+### Draw by Repetition
 
-A. makeMove(Position from, Position to, Board board) verifica daca piesa de la from ii
-apartine (culoarea se potriveste) si apeleaza logica din Board (isValidMove/movePiece).
-Daca mutarea este invalida, arunca o exceptie (tipic InvalidMoveException), iar daca
-mutarea este valida si pe pozitia to era o piesa adversa, adauga piesa capturata in lista de
-capturi si actualizeaza punctajul jucatorului conform tabelului din cerinta (Queen 90, Rook
-50 etc.).
+`Game.checkForDrawByRepetition` inspects the last six recorded moves and
+compares their hashes pairwise (moves 1, 3, and 5 against each other, and
+moves 2, 4, and 6 against each other) to detect a repeated three fold
+back and forth pattern, using a per move hash computed from the origin,
+destination, and captured piece type.
 
-B. getCapturedPieces() intoarce lista cu piesele capturate (folosita pentru afisare sau la
-calculul scorului Y din jocul curent)
+### Computer Opponent
 
-C. getOwnedPieces() poate intoarce multimea sortata de piese detinute de jucator (piese
-aflate pe tabla), fie mentinuta intern si actualizata la fiecare mutare, fie calculata la cerere
-din Board (cat timp e consistenta cu starea tablei).
+`Game.computerMove` implements a simple random legal move opponent. It
+enumerates every pseudo legal move for every piece the computer owns,
+filters them through `isValidMove` to discard anything that would leave its
+own king in check, and picks uniformly at random among the remaining legal
+moves. Captures and pawn promotion, always to a queen for the computer, are
+applied the same way as for the human player.
 
-D. getPoints() si setPoints(int points) permit citirea si setarea punctajului curent al
-jucatorului (Y din jocul curent), folosit ulterior pentru a actualiza punctajul total al User-ului
-(X).
+### Scoring
 
-    Game
-Game tine totul la un loc pentru un singur meci: un id (int), o tabla (Board), doi Player
-(jucatorul si computerul), o structura cu mutarile efectuate (List<Move>) si indexul
-jucatorului curent in lista de jucatori sau doar "culoarea curenta".
+`Player` tracks captured pieces and a running point total for the current
+game, incremented by a fixed value per captured piece type (queen 90, rook
+50, bishop 30, knight 30, pawn 10). At the end of a game, this per game
+score is used to update the owning `User`'s cumulative total.
 
-A. start() incepe un joc nou, initializeaza tabla (board.initialize()), goleste istoricul mutarilor
-si stabileste jucatorul care incepe (de obicei cel cu piesele albe).
+## Persistence
 
-B. resume() reia un joc incarcat din fisiere. El nu reinitializeaza tabla, ci porneste din starea
-salvata, cu mutarile si jucatorul curent deja cunoscuti.
+`JsonReaderUtil` is responsible for all reading and writing of
+`accounts.json` and `games.json`.
 
-C. switchPlayer() comuta la celalalt jucator (de obicei schimba intre cei doi Player sau intre
-culorile WHITE/BLACK), fiind apelata dupa fiecare mutare valabila (inclusiv dupa mutarea
-computerului).
+On read, it first parses `accounts.json` into a set of `User` objects
+(email, password, total points, and the list of game identifiers that
+belong to that account), then parses `games.json`, reconstructing for each
+game its board (by reading each piece's type, color, and position string
+and instantiating the matching `Piece` subclass), its two players, and its
+full move history, before finally linking each `Game` back to the `User`
+whose email matches one of its players.
 
-D. checkForCheckMate() foloseste informatiile din Board si piesele jucatorilor pentru a
-verifica daca unul dintre jucatori este in sah-mat. Mai intai verifica daca regele este in sah,
-apoi verifica daca exista vreo mutare legala care ar putea scoate regele din sah (parcurgand
-piesele si mutarile posibile). Daca nu gaseste nicio astfel de mutare, intoarce true (partida
-s-a incheiat prin sah-mat), altfel false.
+On write, the same object graph is walked in the opposite direction: every
+`User` is serialized with its email, password, total points, and the list
+of its active game identifiers, and every `Game` is serialized with its
+identifier, players, current player color, full board contents, and move
+history. Piece serialization reuses `type()` for the piece character and
+`Position.toString()` for the square, keeping the read and write paths
+symmetric.
 
-E. addMove(Player p, Position from, Position to) construieste un obiect Move (cu culoarea
-jucatorului, pozitia de plecare, pozitia de sosire si piesa capturata daca exista), adauga
-aceasta mutare in lista mutarilor jocului. Ea este apelata dupa ce mutarea a fost executata
-cu succes la nivel de Board/Player.
+## Application Flow
 
-    Move
-Move este modelul pentru o mutare, continand culoarea jucatorului care a facut mutarea
-(Colors), pozitia de start (Position from), pozitia finala (Position to) si piesa capturata
-(Piece captured), care poate fi null.
-Este folosit in Game pentru a tine istoricul mutarilor si in JsonReaderUtil pentru a citi/scrie
-acest istoric in JSON.
+`Main` owns the application's lifecycle: the full list of known users, a
+map of all games indexed by identifier, and a reference to whichever user
+is currently logged in.
 
-    Colors (ENUM cu culorile)
-Colors contine: WHITE, BLACK si GRAY.
-GRAY si BLACK se folosesc pentru piese si jucatori; WHITE e folosita ca o culoare
-ajutatoare (de exemplu pentru borduri de tabla sau zone marcate).
+* `read()` delegates to `JsonReaderUtil` to load both JSON files and
+  reconstruct a fully linked object graph, users already aware of their
+  games and games already aware of their board, players, and move history.
+* `write()` delegates back to `JsonReaderUtil` to serialize the current
+  users and games to disk.
+* `login(email, password)` searches the loaded users for a matching
+  account and, if found, sets it as the current user.
+* `newAccount(email, password)` creates and registers a new account,
+  immediately making it the current user.
+* `run()` drives the interactive loop: authentication (login or account
+  creation), then a main menu offering a new game, a list of games in
+  progress, or logout. Starting a new game constructs a `Game` and two
+  `Player` objects (the user and the computer) and calls `start()`; resuming
+  an existing game calls `resume()` instead, which restores the saved state
+  without touching the board. Logging out triggers `write()` to persist
+  everything before returning to the login prompt or exiting.
+* `main(String[] args)` is the entry point, calling `read()` once at
+  startup and then `run()` to begin interaction.
 
-    InvalidCommandException
-InvalidCommandException se arunca atunci cand utilizatorul introduce o comanda invalidă
-(mutare cu format gresit, optiune inexistenta in meniu, text cand se asteapta un numar etc.)
-si este tratata in Main.run sau la nivelul de UI, astfel incat programul sa nu se inchida, ci sa
-afiseze un mesaj de tip "Invalid command".
+Malformed user input during this loop is expected to surface as
+`InvalidCommandException`, and illegal moves as `InvalidMoveException`,
+both of which are caught at the application loop level so a single bad
+input only prompts a retry rather than terminating the program.
 
-    InvalidMoveException
-InvalidMoveException se arunca atunci cand se incearca o mutare interzisa (coordonate in
-afara tablei, incalcarea regulilor de deplasare, sarit peste piese cand nu e permis, mutarea
-unei piese care nu apartine jucatorului curent, mutare care lasa regele propriu in sah).
-Eeste in general aruncata din Board.isValidMove sau Player.makeMove si este prinsa si
-tratata in Game sau in nivelul de UI, pentru a afisa "Invalid move" si a cere o mutare noua.
+## Design Notes
 
-    JsonReaderUtil
-JsonReaderUtil este clasa care se ocupa de parsarea si generarea fisierelor JSON:
-accounts.json si games.json.
-  La citire, se deschide accounts.json, se citeste lista de utilizatori pentru fiecare obiect JSON,
-ia email, parola, puncte si lista de id-uri de jocuri, se creeaza cate un User cu aceste date,
-si pastreaza undeva lista cu id-urile de jocuri ale fiecarui user. De asemenea, se deschide
-games.json, se citeste lista de jocuri, iar pentru fiecare joc, citeste id-ul, jucatorii (email +
-culoare), culoarea curenta la mutare. Mai apoi se reconstruieste tabla, astfel incat pentru
-fiecare element din "board", citeste tipul piesei, culoarea si pozitia sub forma de string,
-creeaza obiectul Piece potrivit si il plaseaza pe Board. Se reconstruieste istoricul de mutari,
-astfel incat, pentru fiecare element din "moves", citeste culoarea, from, to, si eventual piesa
-capturata (type + color). Creeaza un Game cu Board-ul, Playerii si istoricul si leaga acest
-Game de Useri potriviti pe baza email-urilor si a listei de id-uri din accounts.json.
-La scriere o metoda (de exemplu writeData) primeste colectiile de User si Game,
-construieste un JSON pentru accounts.json, cu email, password, points, games (lista de
-id-uri) si construieste un JSON pentru games.json, cu id, players (email + color),
-currentPlayerColor, board (lista de piese cu type, color, position) si moves (lista de mutari
-cu playerColor, from, to, captured).
-  JsonReaderUtil foloseste metoda type() din piesa pentru a scrie campul "type" in JSON si
-Position.toString() pentru campul "position". La citire, foloseste un switch sau o logica
-echivalenta pentru a reconstrui piesa corecta din caracterul type si culoarea scrisa.
-
-De asemenea, mai exista si fisiere cu rol de Testere, pentru fiecare clasa in parte, care
-testeaza fiecare metoda/ functionalitate implementata in program.
-
+* Move generation and move validation are deliberately kept separate.
+  Pieces only know their own movement pattern; only `Board` knows enough
+  about the full game state to decide whether a pseudo legal move is
+  actually legal, which keeps the king safety check in exactly one place
+  instead of duplicated across every piece type.
+* Validating a move by simulating it on a full board copy, rather than
+  mutating and rolling back the real board, avoids an entire class of bugs
+  where a rejected move could leave residual state behind.
+* `Player` and `User` intentionally track different kinds of points:
+  `Player.currentPoints` is the score for the game currently being played,
+  while `User.totalPoints` is the cumulative score across all games,
+  updated only once a game concludes.
+* The JSON persistence layer is the only place that needs to know how to
+  serialize a `Piece` by its type character, keeping that concern out of
+  the piece classes themselves.
